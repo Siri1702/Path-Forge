@@ -1,38 +1,33 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
-function getEnv(key: string): string {
-  const value = process.env[key]
-  if (!value) {
+export function createClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!url || !key) {
     throw new Error(
-      `Missing environment variable: ${key}\n` +
-      `Add it in Vercel → Project → Settings → Environment Variables.`
+      `Missing environment variable: ${!url ? 'NEXT_PUBLIC_SUPABASE_URL' : 'NEXT_PUBLIC_SUPABASE_ANON_KEY'}\n` +
+      `Add it in Vercel → Project → Settings → Environment Variables, then redeploy.`
     )
   }
-  return value
-}
 
-export function createClient() {
   const cookieStore = cookies()
 
-  return createServerClient(
-    getEnv('NEXT_PUBLIC_SUPABASE_URL'),
-    getEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY'),
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll(cookiesToSet: { name: string; value: string; options?: Record<string, unknown> }[]) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options as Parameters<typeof cookieStore.set>[2])
-            )
-          } catch {
-            // Called from a Server Component — safe to ignore
-          }
-        },
+  return createServerClient(url, key, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll()
       },
-    }
-  )
+      setAll(cookiesToSet: { name: string; value: string; options?: Record<string, unknown> }[]) {
+        try {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            cookieStore.set(name, value, options as Parameters<typeof cookieStore.set>[2])
+          )
+        } catch {
+          // Called from a Server Component — safe to ignore
+        }
+      },
+    },
+  })
 }
