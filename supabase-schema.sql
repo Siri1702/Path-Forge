@@ -192,16 +192,34 @@ $$ LANGUAGE sql SECURITY DEFINER STABLE;
 -- ================================================================
 -- RLS POLICIES — PROFILES
 -- ================================================================
+-- NOTE: We do NOT use is_mentor() here to avoid circular RLS evaluation.
+-- The profiles policy must be self-contained.
 CREATE POLICY "profiles_select" ON public.profiles
   FOR SELECT USING (
-    user_id = auth.uid() OR public.is_mentor()
+    user_id = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM public.profiles AS p
+      WHERE p.user_id = auth.uid() AND p.role = 'mentor'::text
+    )
   );
 
 CREATE POLICY "profiles_insert" ON public.profiles
-  FOR INSERT WITH CHECK (user_id = auth.uid() OR public.is_mentor());
+  FOR INSERT WITH CHECK (
+    user_id = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM public.profiles AS p
+      WHERE p.user_id = auth.uid() AND p.role = 'mentor'::text
+    )
+  );
 
 CREATE POLICY "profiles_update" ON public.profiles
-  FOR UPDATE USING (user_id = auth.uid() OR public.is_mentor());
+  FOR UPDATE USING (
+    user_id = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM public.profiles AS p
+      WHERE p.user_id = auth.uid() AND p.role = 'mentor'::text
+    )
+  );
 
 -- ================================================================
 -- RLS POLICIES — TASKS
