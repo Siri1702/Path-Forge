@@ -2,13 +2,13 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import { formatDateIST } from '@/lib/utils'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { Badge } from '@/components/ui/badge'
-import { Progress } from '@/components/ui/progress'
 import { ProgressRing } from '@/components/shared/progress-ring'
 import { StudentTasksTab } from '@/components/mentor/student-tasks-tab'
 import { StudentDoubtsTab } from '@/components/mentor/student-doubts-tab'
 import { StudentPaymentsTab } from '@/components/mentor/student-payments-tab'
 import { StudentResourcesTab } from '@/components/mentor/student-resources-tab'
+import { EditStudentDialog } from '@/components/mentor/edit-student-dialog'
+import { RoadmapManager } from '@/components/mentor/roadmap-manager'
 import { ArrowLeft, Mail, Calendar } from 'lucide-react'
 import Link from 'next/link'
 
@@ -20,6 +20,15 @@ export default async function StudentProfilePage({ params }: Props) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
+
+  // Get mentor profile ID (needed for roadmap created_by)
+  const { data: mentor } = await supabase
+    .from('profiles')
+    .select('id, role')
+    .eq('user_id', user.id)
+    .single()
+
+  if (!mentor || mentor.role !== 'mentor') redirect('/dashboard/student')
 
   const { data: student } = await supabase
     .from('profiles')
@@ -33,11 +42,20 @@ export default async function StudentProfilePage({ params }: Props) {
   const [
     { data: taskProgress },
     { data: payments },
-    { data: roadmap },
+    { data: roadmapPhases },
   ] = await Promise.all([
     supabase.from('task_progress').select('status').eq('student_id', student.id),
-    supabase.from('payments').select('*').eq('student_id', student.id).order('due_date', { ascending: false }).limit(1),
-    supabase.from('roadmap_phases').select('*').eq('student_id', student.id),
+    supabase
+      .from('payments')
+      .select('*')
+      .eq('student_id', student.id)
+      .order('due_date', { ascending: false })
+      .limit(1),
+    supabase
+      .from('roadmap_phases')
+      .select('*')
+      .eq('student_id', student.id)
+      .order('phase_number'),
   ])
 
   const totalTasks = taskProgress?.length ?? 0
@@ -67,7 +85,9 @@ export default async function StudentProfilePage({ params }: Props) {
           <div className="flex-1 min-w-0">
             <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-2xl font-bold">{student.name}</h1>
-              <span className={`badge-pill ${trackColor(student.track ?? '')}`}>{student.track ?? 'No track'}</span>
+              <span className={`badge-pill ${trackColor(student.track ?? '')}`}>
+                {student.track ?? 'No track'}
+              </span>
               <span className="badge-pill text-slate-400 bg-slate-400/10 border-slate-400/20">
                 Phase {student.current_phase ?? 1}
               </span>
@@ -80,10 +100,16 @@ export default async function StudentProfilePage({ params }: Props) {
                 <Calendar className="w-3.5 h-3.5" /> Joined {formatDateIST(student.created_at)}
               </span>
             </div>
-            {student.bio && <p className="text-sm text-muted-foreground mt-2">{student.bio}</p>}
+            {student.bio && (
+              <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{student.bio}</p>
+            )}
           </div>
 
-          <ProgressRing value={progress} size={80} label="done" />
+          <div className="flex flex-col items-end gap-3">
+            <ProgressRing value={progress} size={80} label="done" />
+            {/* ← Edit button lives here, always visible */}
+            <EditStudentDialog student={student} />
+          </div>
         </div>
 
         <div className="mt-5 pt-5 border-t border-border grid grid-cols-3 gap-4 text-center">
@@ -112,14 +138,25 @@ export default async function StudentProfilePage({ params }: Props) {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="tasks">
-        <TabsList>
+      <Tabs defaultValue="roadmap">
+        <TabsList className="flex-wrap h-auto gap-1">
+          <TabsTrigger value="roadmap">Roadmap</TabsTrigger>
           <TabsTrigger value="tasks">Tasks</TabsTrigger>
           <TabsTrigger value="resources">Resources</TabsTrigger>
           <TabsTrigger value="doubts">Doubts</TabsTrigger>
           <TabsTrigger value="payments">Payments</TabsTrigger>
         </TabsList>
 
+        <TabsContent value="roadmap">
+          <RoadmapManager
+            studentId={student.id}
+            mentorId={mentor.id}
+            initialPhases={(roadmapPhases ?? []).map(p => ({
+              ...p,
+              topics: Array.isArray(p.topics) ? p.topics : [],
+            }))}
+          />
+        </TabsContent>
         <TabsContent value="tasks">
           <StudentTasksTab studentId={student.id} />
         </TabsContent>

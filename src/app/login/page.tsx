@@ -7,7 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/hooks/use-toast'
-import { Loader2, Zap } from 'lucide-react'
+import { Loader2, Zap, AlertTriangle } from 'lucide-react'
 
 const loginSchema = z.object({
   email: z.string().email('Enter a valid email'),
@@ -15,36 +15,94 @@ const loginSchema = z.object({
 })
 type LoginForm = z.infer<typeof loginSchema>
 
+// Detect missing env vars at render time and show a clear error
+function isMisconfigured() {
+  return (
+    !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  )
+}
+
 export default function LoginPage() {
   const router = useRouter()
   const { toast } = useToast()
   const [loading, setLoading] = useState(false)
-  const supabase = createClient()
 
   const { register, handleSubmit, formState: { errors } } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
   })
 
+  // Show configuration error instead of a cryptic "invalid URL" crash
+  if (isMisconfigured()) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#0F172A] p-6">
+        <div className="glass-card p-8 max-w-md w-full space-y-4 border-red-500/30">
+          <div className="flex items-center gap-3 text-red-400">
+            <AlertTriangle className="w-6 h-6 flex-shrink-0" />
+            <h2 className="font-bold text-lg">Configuration Error</h2>
+          </div>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            Supabase environment variables are missing. The app cannot connect to the database.
+          </p>
+          <div className="bg-secondary rounded-lg p-4 space-y-2 font-mono text-xs text-red-300">
+            {!process.env.NEXT_PUBLIC_SUPABASE_URL && (
+              <p>✗ NEXT_PUBLIC_SUPABASE_URL — not set</p>
+            )}
+            {!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY && (
+              <p>✗ NEXT_PUBLIC_SUPABASE_ANON_KEY — not set</p>
+            )}
+          </div>
+          <div className="text-sm text-muted-foreground space-y-1">
+            <p className="font-semibold text-foreground">To fix this:</p>
+            <ol className="list-decimal list-inside space-y-1 text-xs leading-relaxed">
+              <li>Go to <strong>Vercel → Your Project → Settings → Environment Variables</strong></li>
+              <li>Add both variables from your Supabase project's API settings</li>
+              <li>Click <strong>Redeploy</strong> (without clearing build cache)</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const onSubmit = async (data: LoginForm) => {
     setLoading(true)
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      // Safe to create client here — env vars are confirmed present above
+      const supabase = createClient()
+
+      const { data: authData, error } = await supabase.auth.signInWithPassword({
         email: data.email,
         password: data.password,
       })
 
       if (error) {
-        toast({ title: 'Login failed', description: error.message, variant: 'destructive' })
+        toast({
+          title: 'Login failed',
+          description: error.message,
+          variant: 'destructive',
+        })
         return
       }
 
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+      // Use user_metadata.role first (set during invite or manual update)
+      // Falls back to a DB check for manually-created accounts (first mentor)
+      const metaRole = authData.user?.user_metadata?.role as string | undefined
 
+      if (metaRole === 'mentor') {
+        router.push('/dashboard/mentor')
+        return
+      }
+      if (metaRole === 'student') {
+        router.push('/dashboard/student')
+        return
+      }
+
+      // No metadata — check the profiles table (manually-created mentor case)
       const { data: profile } = await supabase
         .from('profiles')
         .select('role')
-        .eq('user_id', user.id)
+        .eq('user_id', authData.user!.id)
         .single()
 
       if (profile?.role === 'mentor') {
@@ -52,6 +110,12 @@ export default function LoginPage() {
       } else {
         router.push('/dashboard/student')
       }
+    } catch (err) {
+      toast({
+        title: 'Unexpected error',
+        description: 'Please try again. If the problem persists, check your Supabase configuration.',
+        variant: 'destructive',
+      })
     } finally {
       setLoading(false)
     }
@@ -61,7 +125,6 @@ export default function LoginPage() {
     <div className="min-h-screen flex">
       {/* Left — Branding panel */}
       <div className="hidden lg:flex flex-col justify-between w-1/2 bg-gradient-to-br from-[#0F172A] via-[#1e1b4b] to-[#312e81] p-12 relative overflow-hidden">
-        {/* Grid background */}
         <div
           className="absolute inset-0 opacity-10"
           style={{
@@ -70,7 +133,6 @@ export default function LoginPage() {
             backgroundSize: '40px 40px',
           }}
         />
-        {/* Glow orb */}
         <div className="absolute top-1/3 left-1/3 w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl" />
 
         <div className="relative z-10">
@@ -98,8 +160,6 @@ export default function LoginPage() {
               Track your roadmap, complete tasks, and grow under structured mentorship — all in one place.
             </p>
           </div>
-
-          {/* Social proof */}
           <div className="flex items-center gap-4 pt-4">
             <div className="flex -space-x-2">
               {['ML', 'DS', 'DA'].map((t, i) => (
@@ -126,7 +186,6 @@ export default function LoginPage() {
       {/* Right — Login form */}
       <div className="flex-1 flex items-center justify-center p-8 bg-[#0F172A]">
         <div className="w-full max-w-md space-y-8 animate-fade-in">
-          {/* Mobile logo */}
           <div className="flex items-center gap-3 lg:hidden">
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
               <Zap className="w-4 h-4 text-white" />

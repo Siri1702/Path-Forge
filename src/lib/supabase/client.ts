@@ -1,8 +1,20 @@
 import { createBrowserClient } from '@supabase/ssr'
 
+function getEnv(key: string): string {
+  const value = process.env[key]
+  if (!value) {
+    throw new Error(
+      `Missing environment variable: ${key}\n` +
+      `Make sure it is set in Vercel → Project → Settings → Environment Variables.\n` +
+      `See .env.local.example for the full list.`
+    )
+  }
+  return value
+}
+
 export function createClient() {
   return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    getEnv('NEXT_PUBLIC_SUPABASE_URL'),
+    getEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY')
   )
 }

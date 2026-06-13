@@ -1,12 +1,23 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
+function getEnv(key: string): string {
+  const value = process.env[key]
+  if (!value) {
+    throw new Error(
+      `Missing environment variable: ${key}\n` +
+      `Add it in Vercel → Project → Settings → Environment Variables.`
+    )
+  }
+  return value
+}
+
 export function createClient() {
   const cookieStore = cookies()
 
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    getEnv('NEXT_PUBLIC_SUPABASE_URL'),
+    getEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY'),
     {
       cookies: {
         getAll() {
@@ -18,7 +29,7 @@ export function createClient() {
               cookieStore.set(name, value, options as Parameters<typeof cookieStore.set>[2])
             )
           } catch {
-            // setAll called from a Server Component — safe to ignore
+            // Called from a Server Component — safe to ignore
           }
         },
       },
